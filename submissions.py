@@ -149,6 +149,51 @@ def upload():
                 info = preprocess.process_image(
                     image, upload_path(binary_name), upload_path(gray_name)
                 )
+                # ----------------------------------------------------------
+                # Automatic answer‑box detection using the gray image
+                # ----------------------------------------------------------
+                try:
+                    from modules.box_detection import detect_answer_boxes
+                    gray_path = upload_path(gray_name)
+                    boxes = detect_answer_boxes(gray_path)
+                    # Count of questions in this assessment
+                    qcount = db.execute(
+                        "SELECT COUNT(*) as cnt FROM questions WHERE assessment_id = ?",
+                        (assessment_id,)
+                    ).fetchone()["cnt"]
+                    if len(boxes) < qcount:
+                        flash(
+                            f"Detected only {len(boxes)} answer boxes but this assessment expects {qcount}. Please verify the sheet.",
+                            "warning",
+                        )
+                    else:
+                        # If more boxes than needed, keep the largest by area
+                        if len(boxes) > qcount:
+                            boxes.sort(key=lambda b: b["w"] * b["h"], reverse=True)
+                            boxes = boxes[:qcount]
+                        # Sort remaining boxes top‑to‑bottom then left‑to‑right
+                        # Load gray image to get dimensions for normalization
+                        import cv2
+                        img = cv2.imread(gray_path)
+                        if img is None:
+                            raise RuntimeError("Failed to load gray image for box normalization")
+                        h_img, w_img = img.shape[:2]
+                        # Store normalized coordinates (fractions of image size)
+                        for idx, b in enumerate(boxes, start=1):
+                            nx = b["x"] / w_img
+                            ny = b["y"] / h_img
+                            nw = b["w"] / w_img
+                            nh = b["h"] / h_img
+                            db.execute(
+                                "UPDATE questions SET region_x = ?, region_y = ?, region_w = ?, region_h = ? "
+                                "WHERE assessment_id = ? AND question_no = ?",
+                                (nx, ny, nw, nh, assessment_id, idx),
+                            )
+                        db.commit()
+                        flash(f"Detected {len(boxes)} answer boxes and saved them.", "success")
+                except Exception as det_e:
+                    print("[BOX DETECTION ERROR]", det_e)
+                    flash("Could not automatically detect answer boxes – you may define them manually.", "error")
             except ValueError as problem:
                 remove_submission_files(filename)
                 error = str(problem)
@@ -197,6 +242,74 @@ def image(submission_id, kind):
     if not filename:
         abort(404)
     return send_from_directory(Config.UPLOAD_FOLDER, filename)
+
+
+@submissions_bp.route("/<int:submission_id>/preview_boxes", methods=("GET",))
+@login_required
+def preview_boxes(submission_id):
+    """Show processed image with detected answer boxes drawn on it."""
+    submission = get_owned_submission(submission_id)
+    db = get_db()
+    # Determine gray image path from processed binary name
+    processed_name = submission["processed_image_path"]
+    if not processed_name:
+        flash("Processed image not found.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    gray_name = processed_name.replace("_binary.png", "_gray.png")
+    gray_path = upload_path(gray_name)
+    if not os.path.exists(gray_path):
+        flash("Gray image not found.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    import cv2
+    img = cv2.imread(gray_path)
+    if img is None:
+        flash("Unable to load gray image.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    h, w = img.shape[:2]
+    boxes = db.execute(
+        "SELECT region_x, region_y, region_w, region_h FROM questions WHERE assessment_id = ?",
+        (submission["assessment_id"],)
+    ).fetchall()
+    for b in boxes:
+        if None in (b["region_x"], b["region_y"], b["region_w"], b["region_h"]):
+            continue
+        x = int(b["region_x"] * w)
+        y = int(b["region_y"] * h)
+        bw = int(b["region_w"] * w)
+        bh = int(b["region_h"] * h)
+        cv2.rectangle(img, (x, y), (x + bw, y + bh), (0, 255, 0), 2)
+    preview_name = f"preview_{submission_id}.png"
+    preview_path = upload_path(preview_name)
+    cv2.imwrite(preview_path, img)
+    return render_template("box_preview.html", submission=submission, preview_file=preview_name)
+
+@submissions_bp.route("/<int:submission_id>/review_boxes", methods=("GET", "POST"))
+@login_required
+def review_boxes(submission_id):
+    submission = get_owned_submission(submission_id)
+    db = get_db()
+    # Fetch current box coordinates for this assessment
+    boxes = db.execute(
+        "SELECT question_no, region_x, region_y, region_w, region_h FROM questions WHERE assessment_id = ? ORDER BY question_no",
+        (submission["assessment_id"],)
+    ).fetchall()
+    if request.method == "POST":
+        for b in boxes:
+            qno = b["question_no"]
+            x = request.form.get(f"box_{qno}_x", type=int)
+            y = request.form.get(f"box_{qno}_y", type=int)
+            w = request.form.get(f"box_{qno}_w", type=int)
+            h = request.form.get(f"box_{qno}_h", type=int)
+            if None not in (x, y, w, h):
+                db.execute(
+                    "UPDATE questions SET region_x = ?, region_y = ?, region_w = ?, region_h = ? WHERE assessment_id = ? AND question_no = ?",
+                    (x, y, w, h, submission["assessment_id"], qno),
+                )
+        db.commit()
+        flash("Box coordinates updated.", "success")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    return render_template("box_review.html", submission=submission, boxes=boxes)
+
 
 
 @submissions_bp.route("/<int:submission_id>/reprocess", methods=("POST",))

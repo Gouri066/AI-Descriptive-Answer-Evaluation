@@ -31,7 +31,7 @@ def clean_question(text):
     if any(kw in low for kw in discard_keywords):
         return None
     # Try to extract a leading number (e.g., "1.", "2)")
-    m = re.match(r'^\s*\d+[.)]?\s+(.+)', txt)
+    m = re.match(r'^\s*(?:\d+|[ivxIVX]+)[.)\s,]+\s*(.+)', txt)
     if m:
         candidate = m.group(1).strip()
     else:
@@ -438,12 +438,24 @@ def upload_paper(assessment_id):
             db.execute("DELETE FROM questions WHERE assessment_id = ?", (assessment_id,))
             extracted_questions = _extract_questions_with_tesseract(file_path)
             # Try Gemini if API key is set
-            api_key = os.environ.get("GEMINI_API_KEY", "")
+            api_key = os.environ.get("GEMINI_API_KEY", "").strip().strip('"')
+            # Debug: show that we have a non‑empty key (mask the actual value)
+            if api_key:
+                print(f"[DEBUG] GEMINI_API_KEY present, length={len(api_key)}")
+            else:
+                print("[DEBUG] GEMINI_API_KEY missing or empty")
+            # Import genai – try the new package first, fall back to the legacy one
+            try:
+                import google.genai as genai
+            except Exception:
+                import google.generativeai as genai
+
             if api_key:
                 try:
                     extracted_questions = _extract_questions_with_gemini(file_path, api_key)
                 except Exception as gem_e:
                     print("[GEMINI ERROR]", gem_e)
+                    flash("Gemini API error – falling back to OCR. Check your GEMINI_API_KEY.", "error")
             created = 0
             if extracted_questions:
                 for idx, qtext in enumerate(extracted_questions, start=1):
@@ -503,52 +515,46 @@ def upload_paper(assessment_id):
 # ---------------------------------------------------------------------------
 # Helper: extract questions from image using Gemini Vision AI
 # ---------------------------------------------------------------------------
+
 def _extract_questions_with_gemini(image_path, api_key):
-    """Use Google Gemini Vision to read a question-paper image and return
-    a clean list of question strings."""
-    import google.generativeai as genai
+    """Extract questions from a question-paper image using Gemini Vision."""
+    from google import genai
     from PIL import Image
 
-    # api_key is passed in from the caller
+    client = genai.Client(api_key=api_key)
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = """You are a school teacher's assistant. Examine this question paper image carefully.
 
-    img = Image.open(image_path)
+Extract ONLY the actual questions, excluding the school name, class, subject, marks, date, student name, and instructions.
 
-    prompt = """You are a school teacher's assistant. Look at this question paper image carefully.
+Return only a numbered list, one question per line.
+Keep blanks as ___.
+Fix obvious OCR spelling errors.
+Do not add explanations or extra text."""
 
-Extract ONLY the actual questions from this paper (not the header, school name, class, subject, marks, date, or instructions).
+    with Image.open(image_path) as img:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=[prompt, img],
+        )
 
-Return ONLY a numbered list, one question per line, in this exact format:
-1. <question text>
-2. <question text>
-...
-
-Rules:
-- Include every fill-in-the-blank, choose-the-answer, pattern, clock, or other question
-- For fill-in-the-blank questions, keep the blank as ___ (three underscores)
-- Fix obvious OCR errors in spelling
-- Do NOT include: school name, class, subject, time, max marks, student name, section headings like "Q1. Fill in the blanks"
-- Do NOT add explanations or extra text - just the numbered list"""
-
-    response = model.generate_content([prompt, img])
-    raw = response.text.strip()
-
+    raw = (response.text or "").strip()
     questions = []
-    for line in raw.split("\n"):
+
+    for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
-        # Remove leading number and dot/bracket
-        m = re.match(r"^\d+[.)\s]+(.+)", line)
-        if m:
-            q = m.group(1).strip()
-            if len(q) > 3:
-                questions.append(q)
+
+        match = re.match(r"^\d+[.)\s]+(.+)", line)
+        if match:
+            question = match.group(1).strip()
+            if len(question) > 3:
+                questions.append(question)
 
     print(f"[GEMINI] Extracted {len(questions)} questions")
     return questions
+
 
 
 # ---------------------------------------------------------------------------
@@ -568,46 +574,14 @@ def _extract_questions_with_tesseract(image_path):
     gray = cv2.bilateralFilter(gray, 9, 75, 75)
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                     cv2.THRESH_BINARY, 11, 2)
-    data = pytesseract.image_to_data(thresh, config="--psm 6 --oem 3",
-                                      output_type=pytesseract.Output.DICT)
-    lines_dict = {}
-    for i in range(len(data["text"])):
-        word = data["text"][i].strip()
-        if word == "" or int(data["conf"][i]) < 30:
-            continue
-        key = (data["block_num"][i], data["line_num"][i])
-        lines_dict.setdefault(key, []).append(word)
-
-    lines = [" ".join(lines_dict[k]) for k in sorted(lines_dict.keys())]
-
-    skip_keywords = [
-        "school", "sample paper", "class:", "time :", "subject:",
-        "name of student", "max. marks", "max marks", "dhamtari",
-        "delhi public", "oflue", "date", "nthe blanks", "fill in"
-    ]
-
+    # Use simple OCR to get raw text lines
+    raw_text = pytesseract.image_to_string(thresh, config="--psm 6 --oem 3")
+    lines = raw_text.splitlines()
     questions = []
-    for txt in lines:
-        txt = txt.strip()
-        if len(txt) < 4:
-            continue
-        low = txt.lower()
-        if any(kw in low for kw in skip_keywords):
-            continue
-        if re.match(r"^\s*[Qq]\d+[.):]", txt):
-            continue
-        roman_or_num = re.match(
-            r"^\s*(i{1,3}v?|vi{0,3}|ix|x{1,3}|\d+)[.)\s]",
-            txt, re.IGNORECASE
-        )
-        if roman_or_num or "_" in txt or txt.endswith("?"):
-            questions.append(txt)
-            continue
-        words = txt.split()
-        alpha = sum(c.isalpha() for c in txt)
-        if len(words) >= 4 and alpha / max(len(txt), 1) > 0.4:
-            questions.append(txt)
-
+    for line in lines:
+        cleaned = clean_question(line)
+        if cleaned:
+            questions.append(cleaned)
     return questions
 
 
@@ -644,4 +618,4 @@ def edit_answers(assessment_id):
         assessment=assessment,
         questions=questions,
         question_types=QUESTION_TYPES,
-    )
+    )

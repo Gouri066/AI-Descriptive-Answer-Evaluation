@@ -4,8 +4,9 @@ import database
 from auth import auth_bp, login_required
 from assessments import assessments_bp
 from submissions import submissions_bp
-from layout import layout_bp
+import os
 from evaluate import evaluate_bp
+from layout import layout_bp
 
 # Create the Flask application and load settings from config.py
 app = Flask(__name__)
@@ -84,6 +85,11 @@ def db_check():
 
 
 if __name__ == "__main__":
-    # debug=True restarts the server automatically when you save changes
-    # and shows detailed error pages. Turn it off for final use.
-    app.run(debug=True)
+    # Show whether the Gemini key is available when the server starts
+    key = os.getenv("GEMINI_API_KEY", "").strip().strip('"')
+    if key:
+        print(f"[STARTUP] GEMINI_API_KEY present, length={len(key)}")
+    else:
+        print("[STARTUP] GEMINI_API_KEY missing or empty")
+    # Turn off the automatic reloader (it spawns a new process that loses env vars)
+    app.run(debug=True, use_reloader=False)

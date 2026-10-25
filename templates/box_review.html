@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Answer Boxes – {{ submission["student_name"] }}{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'sheets' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>Edit Answer Boxes for {{ submission["student_name"] }} (Roll {{ submission["student_roll_no"] }})</h2>
+                <p class="muted">
+                    {{ submission["assessment_title"] }} &middot; Class {{ submission["class_level"] }} &middot; {{ submission["subject"] }}
+                </p>
+            </div>
+        </div>
+
+        <form method="post" class="box-edit-form">
+            <table class="table" style="width:100%; max-width:800px; margin:auto;">
+                <thead>
+                    <tr>
+                        <th>Q.No.</th>
+                        <th>X</th>
+                        <th>Y</th>
+                        <th>Width</th>
+                        <th>Height</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for b in boxes %}
+                    <tr>
+                        <td>{{ b["question_no"] }}</td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_x" value="{{ b["region_x"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_y" value="{{ b["region_y"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_w" value="{{ b["region_w"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_h" value="{{ b["region_h"] }}" required></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div style="text-align:center; margin-top:20px;">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="{{ url_for('submissions.detail', submission_id=submission['id']) }}" class="btn btn-outline" style="margin-left:10px;">Cancel</a>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}

@@ -24,16 +24,17 @@
                       class="inline-form">
                     <button type="submit" class="btn">▶ Evaluate</button>
                 </form>
-
+                <!-- New button to edit/draw answer boxes -->
+                <a href="{{ url_for('submissions.review_boxes', submission_id=submission['id']) }}" class="btn btn-outline" style="margin-left:8px;">Edit Boxes</a>
                 <form method="post"
                       action="{{ url_for('submissions.reprocess', submission_id=submission['id']) }}"
-                      class="inline-form">
+                      class="inline-form" style="margin-left:8px;">
                     <button type="submit" class="btn btn-outline">Re-run preprocessing</button>
                 </form>
                 <form method="post"
                       action="{{ url_for('submissions.delete', submission_id=submission['id']) }}"
                       onsubmit="return confirm('Delete this answer sheet and its images?');"
-                      class="inline-form">
+                      class="inline-form" style="margin-left:8px;">
                     <button type="submit" class="btn btn-danger">Delete</button>
                 </form>
             </div>
