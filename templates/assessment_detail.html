@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}{{ assessment["title"] }} | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'assessments' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>{{ assessment["title"] }}</h2>
+                <p class="muted">
+                    Class {{ assessment["class_level"] }} &middot; {{ assessment["subject"] }}
+                    &middot; {{ questions|length }} question(s) &middot; Total {{ "%g"|format(total_marks) }} marks
+                </p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('layout.editor', assessment_id=assessment['id']) }}"
+                   class="btn btn-outline">🗂 Define Answer Boxes</a>
+                <form method="post"
+                      action="{{ url_for('assessments.delete_assessment', assessment_id=assessment['id']) }}"
+                      onsubmit="return confirm('Delete this whole assessment and all its questions?');">
+                    <button type="submit" class="btn btn-danger">Delete Assessment</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="panel table-wrap">
+            <h3>Questions and answer key</h3>
+            {% if questions %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Question</th>
+                        <th>Type</th>
+                        <th>Marks</th>
+                        <th>Correct answer</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in questions %}
+                    <tr>
+                        <td>{{ q["question_no"] }}</td>
+                        <td>{{ q["question_text"] }}</td>
+                        <td><span class="badge">{{ question_types[q["question_type"]] }}</span></td>
+                        <td>{{ "%g"|format(q["max_marks"]) }}</td>
+                        <td><code>{{ q["correct_answer"] }}</code></td>
+                        <td class="actions">
+                            <a href="{{ url_for('assessments.edit_question', assessment_id=assessment['id'], question_id=q['id']) }}">Edit</a>
+                            <form method="post"
+                                  action="{{ url_for('assessments.delete_question', assessment_id=assessment['id'], question_id=q['id']) }}"
+                                  onsubmit="return confirm('Delete this question?');"
+                                  class="inline-form">
+                                <button type="submit" class="text-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted">No questions yet. Add the first one below.</p>
+            {% endif %}
+        </div>
+
+<div class="panel spaced" id="add-question">
+    <h3>Add a question</h3>
+    <form method="post" class="stack-form" action="{{ url_for('assessments.add_question', assessment_id=assessment['id']) }}">
+        {% include "_question_form.html" %}
+        <button type="submit" class="btn">Add Question</button>
+    </form>
+    <hr />
+    <h3>Upload Question Paper (image)</h3>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('assessments.upload_paper', assessment_id=assessment['id']) }}">
+        <input type="file" name="paper_image" accept="image/*" required />
+        <button type="submit" class="btn btn-outline">Upload Paper</button>
+    </form>
+</div>
+    </section>
+</div>
+{% endblock %}

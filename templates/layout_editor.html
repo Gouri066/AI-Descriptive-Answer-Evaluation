@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}Define Answer Boxes | {{ assessment["title"] }} | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'assessments' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>Define Answer Boxes</h2>
+                <p class="muted">{{ assessment["title"] }} &middot; Class {{ assessment["class_level"] }} &middot; {{ assessment["subject"] }}</p>
+            </div>
+            <a href="{{ url_for('assessments.detail', assessment_id=assessment['id']) }}"
+               class="btn btn-outline">← Back to Assessment</a>
+        </div>
+
+        {% if not questions %}
+        <div class="panel spaced">
+            <p class="muted">This assessment has no questions yet.
+                <a href="{{ url_for('assessments.detail', assessment_id=assessment['id']) }}">Add questions first</a>.
+            </p>
+        </div>
+
+        {% elif not ref_submission %}
+        <div class="panel spaced">
+            <p class="muted">⚠ No processed answer sheet found for this assessment.<br>
+                <a href="{{ url_for('submissions.upload') }}?assessment_id={{ assessment['id'] }}">Upload one first</a>,
+                then come back here to draw the answer boxes.
+            </p>
+        </div>
+
+        {% else %}
+        <div class="panel spaced">
+            <p class="muted">
+                <strong>How to use:</strong>
+                Click a question in the panel on the right → then click and drag on the
+                answer sheet image to draw a box around that question's answer area.
+                The box is saved automatically (green = saved).
+            </p>
+        </div>
+
+        <div class="layout-editor-wrap">
+
+            <!-- ── Sheet image + transparent canvas overlay ── -->
+            <div class="layout-canvas-wrap" id="canvasWrap">
+                <img id="refImg"
+                     src="{{ url_for('submissions.image',
+                                     submission_id=ref_submission['id'],
+                                     kind='processed') }}"
+                     alt="Reference answer sheet"
+                     draggable="false">
+                <canvas id="boxCanvas"></canvas>
+                <div id="canvasHint" class="canvas-hint">← Click a question first</div>
+            </div>
+
+            <!-- ── Question list ── -->
+            <div class="layout-questions panel">
+                <h3>Questions</h3>
+                <p class="muted hint">Click a question, then draw its answer box on the image.</p>
+
+                <div id="questionList" style="margin-top:12px">
+                {% for q in questions %}
+                <div class="q-item
+                        {% if q['region_x'] is not none %}q-defined{% endif %}"
+                     id="qitem-{{ q['id'] }}"
+                     data-qid="{{ q['id'] }}"
+                     data-has-region="{{ 'true' if q['region_x'] is not none else 'false' }}"
+                     data-rx="{{ q['region_x'] if q['region_x'] is not none else '' }}"
+                     data-ry="{{ q['region_y'] if q['region_y'] is not none else '' }}"
+                     data-rw="{{ q['region_w'] if q['region_w'] is not none else '' }}"
+                     data-rh="{{ q['region_h'] if q['region_h'] is not none else '' }}">
+                    <div class="q-item-top">
+                        <strong>Q{{ q['question_no'] }}</strong>
+                        <span class="badge {% if q['region_x'] is not none %}status-processed{% else %}status-uploaded{% endif %}"
+                              id="badge-{{ q['id'] }}">
+                            {% if q['region_x'] is not none %}✓ Box set{% else %}No box{% endif %}
+                        </span>
+                    </div>
+                    <div class="q-item-text muted">{{ q['question_text'][:55] }}{% if q['question_text']|length > 55 %}…{% endif %}</div>
+                    <div class="q-item-type">
+                        <span class="badge">{{ q['question_type']|replace('_',' ')|title }}</span>
+                        {{ "%g"|format(q['max_marks']) }} mark(s)
+                    </div>
+                </div>
+                {% endfor %}
+                </div>
+
+                <!-- Active-question info box -->
+                <div id="activeInfo" class="active-info" hidden>
+                    <p class="muted" style="margin-top:12px">Drawing box for:</p>
+                    <p><strong id="activeLabel"></strong></p>
+                    <button class="btn btn-outline" id="clearBtn"
+                            style="margin-top:8px;font-size:0.85rem;padding:6px 14px">
+                        Clear this box
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    const SAVE_URL = {{ url_for('layout.save_region', assessment_id=assessment['id']) | tojson }};
+
+    const img      = document.getElementById("refImg");
+    const canvas   = document.getElementById("boxCanvas");
+    if (!canvas) return;
+    const ctx      = canvas.getContext("2d");
+    const hint     = document.getElementById("canvasHint");
+    const activeInfo  = document.getElementById("activeInfo");
+    const activeLabel = document.getElementById("activeLabel");
+    const clearBtn    = document.getElementById("clearBtn");
+
+    // ── State ────────────────────────────────────────────────────────────
+    let activeQid = null;   // currently selected question id (int)
+    let regions   = {};     // qid → {rx,ry,rw,rh}
+    let dragging  = false;
+    let sx = 0, sy = 0;    // drag start in canvas pixels
+
+    // ── Colour palette: one per question (cycles) ────────────────────────
+    const COLORS = ["#1e3a8a","#0891b2","#7c3aed","#b45309","#be123c","#047857"];
+    function colorFor(idx) { return COLORS[idx % COLORS.length]; }
+
+    // ── Populate initial region data from data-* attributes ──────────────
+    document.querySelectorAll(".q-item").forEach(function(el, idx) {
+        const qid = parseInt(el.dataset.qid);
+        if (el.dataset.hasRegion === "true") {
+            regions[qid] = {
+                rx: parseFloat(el.dataset.rx),
+                ry: parseFloat(el.dataset.ry),
+                rw: parseFloat(el.dataset.rw),
+                rh: parseFloat(el.dataset.rh),
+                color: colorFor(idx),
+                label: "Q" + (idx + 1),
+            };
+        }
+        el.dataset.color = colorFor(idx);
+        el.dataset.label = "Q" + (idx + 1);
+    });
+
+    // ── Canvas sizing ────────────────────────────────────────────────────
+    function resizeCanvas() {
+        const rect = img.getBoundingClientRect();
+        canvas.width  = rect.width;
+        canvas.height = rect.height;
+        redraw();
+    }
+
+    // ── Drawing ──────────────────────────────────────────────────────────
+    function redraw(tempBox) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw all saved boxes
+        document.querySelectorAll(".q-item").forEach(function(el) {
+            const qid = parseInt(el.dataset.qid);
+            const r = regions[qid];
+            if (!r) return;
+            const isActive = (qid === activeQid);
+            drawBox(
+                r.rx * canvas.width,
+                r.ry * canvas.height,
+                r.rw * canvas.width,
+                r.rh * canvas.height,
+                el.dataset.color,
+                el.dataset.label,
+                isActive,
+            );
+        });
+
+        // Draw the rubber-band box while dragging
+        if (tempBox) {
+            ctx.setLineDash([6, 3]);
+            ctx.strokeStyle = "#e11d48";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(tempBox.x, tempBox.y, tempBox.w, tempBox.h);
+            ctx.setLineDash([]);
+        }
+    }
+
+    function drawBox(x, y, w, h, color, label, isActive) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = isActive ? 3 : 2;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = color + (isActive ? "30" : "18");
+        ctx.fillRect(x, y, w, h);
+        // Label tag
+        ctx.fillStyle = color;
+        ctx.font = "bold 12px Arial";
+        ctx.fillRect(x, y - 18, ctx.measureText(label).width + 8, 18);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, x + 4, y - 4);
+    }
+
+    // ── Select question ──────────────────────────────────────────────────
+    document.querySelectorAll(".q-item").forEach(function(el) {
+        el.addEventListener("click", function () {
+            document.querySelectorAll(".q-item").forEach(function(e) {
+                e.classList.remove("q-active");
+            });
+            el.classList.add("q-active");
+            activeQid = parseInt(el.dataset.qid);
+            activeLabel.textContent =
+                el.dataset.label + " — " + el.querySelector(".q-item-text").textContent.trim();
+            activeInfo.hidden = false;
+            hint.hidden = true;
+            redraw();
+        });
+    });
+
+    // ── Clear button ─────────────────────────────────────────────────────
+    clearBtn.addEventListener("click", function () {
+        if (activeQid === null) return;
+        saveRegion(activeQid, null, null, null, null);
+    });
+
+    // ── Mouse events on canvas ───────────────────────────────────────────
+    canvas.addEventListener("mousedown", function (e) {
+        if (activeQid === null) {
+            hint.hidden = false;
+            hint.textContent = "← Click a question first";
+            return;
+        }
+        dragging = true;
+        const r = canvas.getBoundingClientRect();
+        sx = e.clientX - r.left;
+        sy = e.clientY - r.top;
+    });
+
+    canvas.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        const r  = canvas.getBoundingClientRect();
+        const cx = e.clientX - r.left;
+        const cy = e.clientY - r.top;
+        const bx = Math.min(sx, cx), by = Math.min(sy, cy);
+        const bw = Math.abs(cx - sx),  bh = Math.abs(cy - sy);
+        redraw({ x: bx, y: by, w: bw, h: bh });
+    });
+
+    canvas.addEventListener("mouseup", function (e) {
+        if (!dragging) return;
+        dragging = false;
+        const r   = canvas.getBoundingClientRect();
+        const ex  = e.clientX - r.left;
+        const ey  = e.clientY - r.top;
+        const bx  = Math.min(sx, ex), by = Math.min(sy, ey);
+        const bw  = Math.abs(ex - sx), bh = Math.abs(ey - sy);
+
+        if (bw < 10 || bh < 10) { redraw(); return; }   // ignore tiny clicks
+
+        // Convert to fractions (canvas coords == displayed image coords)
+        const rx = bx / canvas.width,  ry = by / canvas.height;
+        const rw = bw / canvas.width,  rh = bh / canvas.height;
+        saveRegion(activeQid, rx, ry, rw, rh);
+    });
+
+    // ── Save to server (JSON) ────────────────────────────────────────────
+    async function saveRegion(qid, rx, ry, rw, rh) {
+        try {
+            const resp = await fetch(SAVE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    question_id: qid,
+                    region_x: rx, region_y: ry,
+                    region_w: rw, region_h: rh,
+                }),
+            });
+            if (!resp.ok) { console.error("Save failed", resp.status); return; }
+
+            const el  = document.getElementById("qitem-" + qid);
+            const badge = document.getElementById("badge-" + qid);
+
+            if (rx !== null) {
+                // Find color + label for this question
+                const qItems = Array.from(document.querySelectorAll(".q-item"));
+                const idx    = qItems.indexOf(el);
+                regions[qid] = { rx, ry, rw, rh, color: colorFor(idx), label: "Q" + (idx + 1) };
+                el.classList.add("q-defined");
+                el.dataset.hasRegion = "true";
+                badge.className = "badge status-processed";
+                badge.textContent = "✓ Box set";
+            } else {
+                delete regions[qid];
+                el.classList.remove("q-defined");
+                el.dataset.hasRegion = "false";
+                badge.className = "badge status-uploaded";
+                badge.textContent = "No box";
+            }
+            redraw();
+        } catch (err) {
+            console.error("Network error saving region:", err);
+        }
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────
+    if (img.complete && img.naturalWidth) {
+        resizeCanvas();
+    } else {
+        img.addEventListener("load", resizeCanvas);
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+})();
+</script>
+{% endblock %}

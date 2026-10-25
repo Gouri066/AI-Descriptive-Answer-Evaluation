@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Enter Answers for {{ assessment["title"] }}{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'assessments' %}
+    {% include "_sidebar.html" %}
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>Enter Correct Answers for {{ assessment["title"] }}</h2>
+                <p class="muted">Class {{ assessment["class_level"] }} &middot; {{ assessment["subject"] }}</p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('assessments.detail', assessment_id=assessment['id']) }}" class="btn btn-outline">← Back to Assessment</a>
+            </div>
+        </div>
+
+        <form method="post" class="stack-form">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Question</th>
+                        <th>Type</th>
+                        <th>Marks</th>
+                        <th>Correct answer</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in questions %}
+                    <tr>
+                        <td>{{ q["question_no"] }}</td>
+                        <td>{{ q["question_text"]|e }}</td>
+                        <td><span class="badge">{{ question_types[q["question_type"]] }}</span></td>
+                        <td>{{ "%g"|format(q["max_marks"]) }}</td>
+                        <td>
+                            <input type="text" name="answer_{{ q['id'] }}" value="{{ q["correct_answer"] }}" class="form-control" placeholder="Enter correct answer" />
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="submit" class="btn btn-primary mt-4">Save Answers</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Question | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<section class="form-card">
+    <h2>Edit Question {{ question["question_no"] }}</h2>
+    <p class="muted">{{ assessment["title"] }}</p>
+    <form method="post" class="stack-form">
+        {% include "_question_form.html" %}
+        <button type="submit" class="btn btn-full">Save Changes</button>
+    </form>
+    <p class="form-note">
+        <a href="{{ url_for('assessments.detail', assessment_id=assessment['id']) }}">Cancel</a>
+    </p>
+</section>
+{% endblock %}

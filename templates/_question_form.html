@@ -1,0 +1,20 @@
+<label for="question_text">Question</label>
+<input type="text" id="question_text" name="question_text"
+       value="{{ form.get('question_text', '') }}" required>
+
+<label for="question_type">Question type</label>
+<select id="question_type" name="question_type" required>
+    {% for key, label in question_types.items() %}
+    <option value="{{ key }}"
+        {% if form.get('question_type') == key %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+</select>
+
+<label for="max_marks">Maximum marks</label>
+<input type="number" id="max_marks" name="max_marks" min="0.5" max="100"
+       step="0.5" value="{{ form.get('max_marks', '1') }}" required>
+
+<label for="correct_answer">Correct answer</label>
+<input type="text" id="correct_answer" name="correct_answer"
+       value="{{ form.get('correct_answer', '') }}" required>
+<small id="answerHint" class="hint"></small>

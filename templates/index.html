@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Home | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>AI-Based Automated Answer Evaluation</h1>
+    <p>
+        Evaluate handwritten answer sheets of primary school students
+        (Classes 1 to 5) and track student performance.
+    </p>
+    <a href="{{ url_for('auth.login') }}" class="btn">Teacher Login</a>
+    <a href="{{ url_for('auth.register') }}" class="btn btn-outline">Register</a>
+</section>
+{% endblock %}

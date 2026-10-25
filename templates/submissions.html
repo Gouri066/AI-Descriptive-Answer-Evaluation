@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Answer Sheets | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'sheets' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <h2>Answer Sheets</h2>
+            <a href="{{ url_for('submissions.upload') }}" class="btn">+ Upload Sheet</a>
+        </div>
+
+        {% if submissions %}
+        <div class="panel table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Roll no.</th>
+                        <th>Assessment</th>
+                        <th>Status</th>
+                        <th>Uploaded</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in submissions %}
+                    <tr>
+                        <td>{{ s["student_name"] }}</td>
+                        <td>{{ s["student_roll_no"] }}</td>
+                        <td>{{ s["assessment_title"] }}</td>
+                        <td><span class="badge status-{{ s['status'] }}">{{ s["status"]|replace("_", " ") }}</span></td>
+                        <td>{{ s["uploaded_at"] }}</td>
+                        <td><a href="{{ url_for('submissions.detail', submission_id=s['id']) }}">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="panel">
+            <p class="muted">No answer sheets uploaded yet.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Results: {{ submission["student_name"] }} | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'sheets' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+
+        <!-- ── Header ── -->
+        <div class="page-head">
+            <div>
+                <h2>{{ submission["student_name"] }}
+                    <small class="muted">(Roll {{ submission["student_roll_no"] }})</small>
+                </h2>
+                <p class="muted">
+                    {{ submission["assessment_title"] }} &middot;
+                    Class {{ submission["class_level"] }} &middot;
+                    {{ submission["subject"] }} &middot;
+                    <span class="badge status-{{ submission['status'] }}">
+                        {{ submission["status"]|replace("_"," ") }}
+                    </span>
+                </p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('submissions.detail', submission_id=submission['id']) }}"
+                   class="btn btn-outline">← Sheet</a>
+                <form method="post"
+                      action="{{ url_for('evaluate.run', submission_id=submission['id']) }}"
+                      class="inline-form">
+                    <button class="btn" type="submit">Re-evaluate</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ── Score card ── -->
+        {% if submission["total_score"] is not none %}
+        {% set possible = question_answers | sum(attribute='max_marks') %}
+        {% set pct = (submission["total_score"] / possible * 100) | round | int if possible > 0 else 0 %}
+        <div class="score-card panel spaced">
+            <div class="score-big">
+                {{ "%.1f"|format(submission["total_score"]) }}
+                <span class="score-denom">/ {{ "%g"|format(possible) }}</span>
+            </div>
+            <div class="score-bar-wrap">
+                <div class="score-bar" style="width:{{ pct }}%"></div>
+            </div>
+            <div class="score-pct">{{ pct }}%</div>
+            <p class="muted" style="margin-top:10px">{{ submission["overall_feedback"] }}</p>
+            {% if submission["evaluated_at"] %}
+            <p class="muted" style="font-size:0.82rem;margin-top:4px">
+                Evaluated {{ submission["evaluated_at"] }}
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- ── Per-question table ── -->
+        <div class="panel table-wrap spaced">
+            <h3>Question-wise Results</h3>
+            <table class="data-table result-table">
+                <thead>
+                    <tr>
+                        <th>Q</th>
+                        <th>Question</th>
+                        <th>Type</th>
+                        <th>OCR read</th>
+                        <th>Correct answer</th>
+                        <th>Marks</th>
+                        <th>Confidence</th>
+                        <th>Feedback</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for qa in question_answers %}
+                <tr class="
+                    {% if qa['recognized_text'] is none %}row-no-region
+                    {% elif qa['is_correct'] %}row-correct
+                    {% elif qa['answer_needs_review'] %}row-review
+                    {% else %}row-wrong{% endif %}">
+
+                    <td><strong>{{ qa['question_no'] }}</strong></td>
+                    <td>{{ qa['question_text'] }}</td>
+                    <td><span class="badge">{{ qa['question_type']|replace('_',' ')|title }}</span></td>
+
+                    <td>
+                        {% if qa['recognized_text'] is none %}
+                            <span class="muted">—</span>
+                        {% elif qa['recognized_text'] %}
+                            <code>{{ qa['recognized_text'] }}</code>
+                        {% else %}
+                            <span class="muted italic">blank</span>
+                        {% endif %}
+                    </td>
+
+                    <td><code>{{ qa['correct_answer'] }}</code></td>
+
+                    <td>
+                        {% if qa['marks_awarded'] is not none %}
+                            <strong>{{ "%.1f"|format(qa['marks_awarded']) }}</strong>
+                            / {{ "%g"|format(qa['max_marks']) }}
+                            {% if qa['is_correct'] %}
+                                <span class="tick">✓</span>
+                            {% else %}
+                                <span class="cross">✗</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="muted">—</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if qa['confidence'] is not none %}
+                            <span class="conf-pill
+                                {% if qa['confidence'] >= 70 %}conf-high
+                                {% elif qa['confidence'] >= 45 %}conf-mid
+                                {% else %}conf-low{% endif %}">
+                                {{ "%.0f"|format(qa['confidence']) }}%
+                            </span>
+                            {% if qa['answer_needs_review'] and not qa['is_correct'] %}
+                                <span class="badge status-needs_review" title="Low confidence — check manually">⚠ review</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="muted">—</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="feedback-cell">{{ qa['feedback'] or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ── Legend ── -->
+        <div class="result-legend muted spaced">
+            <span class="legend-item"><span class="legend-dot dot-correct"></span> Correct</span>
+            <span class="legend-item"><span class="legend-dot dot-wrong"></span> Incorrect</span>
+            <span class="legend-item"><span class="legend-dot dot-review"></span> Needs review</span>
+            <span class="legend-item"><span class="legend-dot dot-none"></span> No answer box</span>
+        </div>
+
+    </section>
+</div>
+{% endblock %}

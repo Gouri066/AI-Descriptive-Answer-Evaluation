@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'dashboard' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <h2>Welcome, {{ g.teacher["full_name"] }}</h2>
+        <p class="muted">Here is a summary of your assessments and evaluated answer sheets.</p>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.assessments }}</div>
+                <div class="stat-label">Assessments</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.submissions }}</div>
+                <div class="stat-label">Answer sheets uploaded</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.evaluated }}</div>
+                <div class="stat-label">Evaluated</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.needs_review }}</div>
+                <div class="stat-label">Need your review</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>Get started</h3>
+            <p class="muted">Create an assessment and add its questions and answer key.</p>
+            <p><a href="{{ url_for('assessments.new_assessment') }}" class="btn spaced-btn">+ New Assessment</a></p>
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}{{ submission["student_name"] }} | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'sheets' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>{{ submission["student_name"] }} (Roll {{ submission["student_roll_no"] }})</h2>
+                <p class="muted">
+                    {{ submission["assessment_title"] }} &middot; Class {{ submission["class_level"] }}
+                    &middot; {{ submission["subject"] }} &middot;
+                    <span class="badge status-{{ submission['status'] }}">{{ submission["status"]|replace("_", " ") }}</span>
+                </p>
+            </div>
+            <div class="actions">
+                <!-- Evaluate button -->
+                <form method="post"
+                      action="{{ url_for('evaluate.run', submission_id=submission['id']) }}"
+                      class="inline-form">
+                    <button type="submit" class="btn">▶ Evaluate</button>
+                </form>
+
+                <form method="post"
+                      action="{{ url_for('submissions.reprocess', submission_id=submission['id']) }}"
+                      class="inline-form">
+                    <button type="submit" class="btn btn-outline">Re-run preprocessing</button>
+                </form>
+                <form method="post"
+                      action="{{ url_for('submissions.delete', submission_id=submission['id']) }}"
+                      onsubmit="return confirm('Delete this answer sheet and its images?');"
+                      class="inline-form">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Show results link if already evaluated -->
+        {% if submission["status"] in ("evaluated", "needs_review") %}
+        <div class="panel spaced" style="background:#f0fdf4;border-left:4px solid #16a34a;">
+            <p>
+                <strong>Score: {{ "%.1f"|format(submission["total_score"]) }}</strong> &nbsp;|&nbsp;
+                {{ submission["overall_feedback"] }}
+                &nbsp;&nbsp;
+                <a href="{{ url_for('evaluate.result', submission_id=submission['id']) }}"
+                   class="btn" style="padding:6px 16px;font-size:0.9rem">View Full Results →</a>
+            </p>
+        </div>
+        {% endif %}
+
+        <div class="sheet-grid">
+            <div class="panel">
+                <h3>Original upload</h3>
+                <img class="sheet-img" alt="Original answer sheet"
+                     src="{{ url_for('submissions.image', submission_id=submission['id'], kind='original', t=stamp) }}">
+            </div>
+            <div class="panel">
+                <h3>After preprocessing</h3>
+                <img class="sheet-img" alt="Processed answer sheet"
+                     src="{{ url_for('submissions.image', submission_id=submission['id'], kind='processed', t=stamp) }}">
+            </div>
+        </div>
+
+        <p class="muted spaced">
+            Click <strong>▶ Evaluate</strong> to run OCR and auto-mark this sheet.
+            First make sure answer boxes are defined on the assessment
+            (<a href="{{ url_for('assessments.detail', assessment_id=submission['assessment_id']) }}">open assessment →</a>).
+        </p>
+    </section>
+</div>
+{% endblock %}

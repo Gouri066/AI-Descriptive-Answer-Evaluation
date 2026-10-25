@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Answer Sheet | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'upload' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <h2>Upload Answer Sheet</h2>
+        <p class="muted">Upload one photo or scan of a student's completed answer sheet (PNG, JPG or JPEG, up to 10 MB).</p>
+
+        {% if assessments %}
+        <div class="panel spaced">
+            <form method="post" enctype="multipart/form-data" class="stack-form">
+                <label for="assessment_id">Assessment</label>
+                <select id="assessment_id" name="assessment_id" required>
+                    {% for a in assessments %}
+                    <option value="{{ a['id'] }}"
+                        {% if selected_id == a['id'] %}selected{% endif %}>
+                        {{ a["title"] }} (Class {{ a["class_level"] }})
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <label for="student_name">Student name</label>
+                <input type="text" id="student_name" name="student_name"
+                       value="{{ form.get('student_name', '') }}" required>
+
+                <label for="student_roll_no">Roll number</label>
+                <input type="text" id="student_roll_no" name="student_roll_no"
+                       value="{{ form.get('student_roll_no', '') }}" required>
+
+                <label for="sheet">Answer sheet image</label>
+                <input type="file" id="sheet" name="sheet"
+                       accept=".png,.jpg,.jpeg,image/png,image/jpeg" required>
+
+                <img id="previewImg" class="preview-img" alt="" hidden>
+
+                <button type="submit" class="btn">Upload and Process</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="panel spaced">
+            <p class="muted">You need an assessment first.
+                <a href="{{ url_for('assessments.new_assessment') }}">Create one</a>.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

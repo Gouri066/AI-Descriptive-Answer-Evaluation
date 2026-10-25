@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Login | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<section class="form-card">
+    <h2>Teacher Login</h2>
+    <form method="post">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus>
+
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+
+        <button type="submit" class="btn btn-full">Log In</button>
+    </form>
+    <p class="form-note">
+        New teacher? <a href="{{ url_for('auth.register') }}">Create an account</a>
+    </p>
+</section>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Assessments | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'assessments' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <h2>Assessments</h2>
+            <a href="{{ url_for('assessments.new_assessment') }}" class="btn">+ New Assessment</a>
+        </div>
+
+        {% if assessments %}
+        <div class="panel table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Class</th>
+                        <th>Subject</th>
+                        <th>Questions</th>
+                        <th>Total marks</th>
+                        <th>Sheets</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in assessments %}
+                    <tr>
+                        <td>{{ a["title"] }}</td>
+                        <td>{{ a["class_level"] }}</td>
+                        <td>{{ a["subject"] }}</td>
+                        <td>{{ a["question_count"] }}</td>
+                        <td>{{ "%g"|format(a["total_marks"]) }}</td>
+                        <td>{{ a["sheet_count"] }}</td>
+                        <td><a href="{{ url_for('assessments.detail', assessment_id=a['id']) }}">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="panel">
+            <p class="muted">You have not created any assessments yet. Click <b>+ New Assessment</b> to start.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
