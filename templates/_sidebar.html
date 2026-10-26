@@ -1,11 +1,27 @@
+
 <aside class="sidebar">
     <a href="{{ url_for('dashboard') }}"
-       class="side-link {% if active == 'dashboard' %}active{% endif %}">Dashboard</a>
+       class="side-link {% if active == 'dashboard' %}active{% endif %}">
+        Dashboard
+    </a>
+
     <a href="{{ url_for('assessments.list_assessments') }}"
-       class="side-link {% if active == 'assessments' %}active{% endif %}">Assessments</a>
+       class="side-link {% if active == 'assessments' %}active{% endif %}">
+        Assessments
+    </a>
+
     <a href="{{ url_for('submissions.upload') }}"
-       class="side-link {% if active == 'upload' %}active{% endif %}">Upload Sheet</a>
+       class="side-link {% if active == 'upload' %}active{% endif %}">
+        Upload Sheet
+    </a>
+
     <a href="{{ url_for('submissions.list_submissions') }}"
-       class="side-link {% if active == 'sheets' %}active{% endif %}">Answer Sheets</a>
-    <span class="side-link disabled">Results <small>(Phase 9)</small></span>
+       class="side-link {% if active == 'sheets' %}active{% endif %}">
+        Answer Sheets
+    </a>
+
+    <a href="{{ url_for('submissions.list_results') }}"
+      class="side-link {% if active == 'results' %}active{% endif %}">
+      Results 
+   </a>
 </aside>

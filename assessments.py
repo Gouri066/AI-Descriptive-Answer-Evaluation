@@ -54,23 +54,16 @@ QUESTION_TYPES = {
     "numerical": "Numerical answer",
     "shape": "Shape",
     "matching": "Match the following",
-    "addition": "Addition (vertical format)",
-    "subtraction": "Subtraction (vertical format)",
-    "multiplication": "Multiplication (vertical format)",
-    "division": "Division (vertical format)",
     "pattern": "Pattern continuation",
-    "clock": "Clock time reading",
     "true_false": "True / False",
     "number_name": "Number to word",
-    "table_fill": "Table fill‑in",
     "shape_name": "Shape name identification",
 }
 
 SHAPES = ["circle", "square", "triangle", "rectangle", "oval",
           "star", "heart", "diamond"]
 
-SUBJECTS = ["English", "Mathematics", "EVS / Science", "Hindi", "Kannada",
-            "Other"]
+SUBJECTS = ["English", "Mathematics", "EVS / Science", "Other"]
 
 
 def get_owned_assessment(assessment_id):

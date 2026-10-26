@@ -25,6 +25,10 @@
                 </p>
             </div>
             <div class="actions">
+                <a href="{{ url_for('evaluate.personalized', submission_id=submission['id']) }}"
+                class="btn">
+                Personalized Report →
+                </a>
                 <a href="{{ url_for('submissions.detail', submission_id=submission['id']) }}"
                    class="btn btn-outline">← Sheet</a>
                 <form method="post"
@@ -123,7 +127,7 @@
                                 <span class="badge status-needs_review" title="Low confidence — check manually">⚠ review</span>
                             {% endif %}
                         {% else %}
-                            <span class="muted">—</span>
+                            <span class="muted">Not evaluated</span>
                         {% endif %}
                     </td>
 
@@ -141,6 +145,7 @@
             <span class="legend-item"><span class="legend-dot dot-review"></span> Needs review</span>
             <span class="legend-item"><span class="legend-dot dot-none"></span> No answer box</span>
         </div>
+        
 
     </section>
 </div>

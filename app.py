@@ -7,7 +7,10 @@ from submissions import submissions_bp
 import os
 from evaluate import evaluate_bp
 from layout import layout_bp
+from dotenv import load_dotenv
+import result
 
+load_dotenv()
 # Create the Flask application and load settings from config.py
 app = Flask(__name__)
 app.config.from_object(Config)

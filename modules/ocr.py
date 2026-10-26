@@ -48,7 +48,7 @@ _NUM_CFGS = [
 
 # If Tesseract confidence below this → try Gemini Vision
 CONFIDENCE_THRESHOLD = 50
-_GEMINI_FALLBACK_THRESHOLD = 45   # below this confidence → use Gemini
+_GEMINI_FALLBACK_THRESHOLD = 70  # below this confidence → use Gemini
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -134,12 +134,32 @@ def _run_tesseract(crop, question_type):
                           interpolation=cv2.INTER_CUBIC)
 
     is_numeric = question_type in (
-        "numerical", "addition", "subtraction", "multiplication", "division"
-    )
-    primary_cfg = _NUM_CFGS[0] if is_numeric else _TEXT_CFGS[0]
-    alt_cfg     = _NUM_CFGS[1] if is_numeric else _TEXT_CFGS[1]
+    "numerical",
+    "addition",
+    "subtraction",
+    "multiplication",
+    "division",
+)
+   
+    # primary_cfg = _NUM_CFGS[0] if is_numeric else _TEXT_CFGS[0]
+    # alt_cfg = _NUM_CFGS[1] if is_numeric else _TEXT_CFGS[1]
+    
+    if is_numeric:
+        numeric_cfgs = [
+            "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789.- -c load_system_dawg=0 -c load_freq_dawg=0",
+            "--psm 8 --oem 3 -c tessedit_char_whitelist=0123456789.- -c load_system_dawg=0 -c load_freq_dawg=0",
+            "--psm 13 --oem 3 -c tessedit_char_whitelist=0123456789.- -c load_system_dawg=0 -c load_freq_dawg=0",
+        ]
+        primary_cfg = numeric_cfgs[0]
+        alt_cfg = numeric_cfgs[1]
+    else:
+        primary_cfg = _TEXT_CFGS[0]
+        alt_cfg = _TEXT_CFGS[1]
 
-    best_text, best_conf = "", 0.0
+    # Initialize these for BOTH numeric and text questions
+    best_text = ""
+    best_conf = 0.0
+
 
     def _update(text, conf):
         nonlocal best_text, best_conf
@@ -151,6 +171,7 @@ def _run_tesseract(crop, question_type):
     enhanced = clahe.apply(gray)
     _, v1 = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     t, c = _tess_one(v1, primary_cfg)
+    print(f"[OCR TEST] {question_type} | CLAHE+OTSU: {t!r} | confidence={c}")
     _update(t, c)
     if best_conf >= _FAST_EXIT_CONF:
         return best_text, round(best_conf, 1)
@@ -159,6 +180,7 @@ def _run_tesseract(crop, question_type):
     v2 = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                 cv2.THRESH_BINARY, blockSize=21, C=10)
     t, c = _tess_one(v2, primary_cfg)
+    print(f"[OCR TEST] {question_type} | ADAPTIVE: {t!r} | confidence={c}")
     _update(t, c)
     if best_conf >= _FAST_EXIT_CONF:
         return best_text, round(best_conf, 1)
@@ -166,6 +188,7 @@ def _run_tesseract(crop, question_type):
     # ── Slow path: only reached for low-confidence / smudged answers ──────
 
     # Variant 3 — raw OTSU (baseline)
+    print("[DEBUG OCR] Starting Variant 3", flush=True)
     _, v3 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     t, c = _tess_one(v3, alt_cfg)
     _update(t, c)
@@ -173,6 +196,7 @@ def _run_tesseract(crop, question_type):
         return best_text, round(best_conf, 1)
 
     # Variant 4 — Denoise → OTSU
+    print("[DEBUG OCR] Starting Variant 4", flush=True)
     try:
         denoised = cv2.fastNlMeansDenoising(gray, h=10)
         _, v4 = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -196,75 +220,67 @@ def _crop_to_png_b64(crop):
 
 
 def _gemini_ocr(crop, question_type, correct_answer_hint=""):
-    """Call Gemini Vision to read handwritten text from a crop.
-    Returns (text, confidence) or ("", 0.0) on failure.
-    """
+    """Read handwritten answers using Gemini Vision."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip().strip('"')
-    if not api_key:
-        return "", 0.0
-
-    b64 = _crop_to_png_b64(crop)
-    if not b64:
+    if not api_key or crop is None or crop.size == 0:
         return "", 0.0
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-
-        # Craft a tight, specific prompt so Gemini returns only the answer
-        if question_type in ("numerical", "addition", "subtraction",
-                             "multiplication", "division"):
-            prompt = (
-                "This image shows a child's handwritten number on an answer sheet. "
-                "The handwriting may be messy or smudged. "
-                "Read the number and respond with ONLY the digits (e.g. '72'). "
-                "Do not add any explanation."
-            )
-        elif question_type == "shape":
-            prompt = (
-                "This image shows a shape drawn by a child on an answer sheet. "
-                "Identify the shape (circle, square, triangle, rectangle, oval, etc.). "
-                "Respond with ONLY the shape name in lowercase."
-            )
-        elif question_type in ("true_false",):
-            prompt = (
-                "This image shows a child's handwritten answer (True or False) on an answer sheet. "
-                "The handwriting may be messy. "
-                "Respond with ONLY 'True' or 'False'."
-            )
-        else:
-            hint = f" The expected answer is one of: {correct_answer_hint}." if correct_answer_hint else ""
-            prompt = (
-                "This image shows a child's handwritten answer on a primary school answer sheet. "
-                "The handwriting may be messy, smudged, or faint."
-                + hint +
-                " Read whatever is written and respond with ONLY the exact text written. "
-                "Do not explain. If you cannot read it, reply with 'unreadable'."
-            )
-
-        import PIL.Image
+        from google import genai
+        from PIL import Image
         import io
-        img_bytes = base64.b64decode(b64)
-        pil_img = PIL.Image.open(io.BytesIO(img_bytes))
 
-        response = model.generate_content([prompt, pil_img])
-        text = (response.text or "").strip()
-
-        # Reject obviously wrong responses
-        if not text or text.lower() in ("unreadable", "i cannot read it",
-                                         "cannot read", "unclear"):
+        ok, buf = cv2.imencode(".png", crop)
+        if not ok:
             return "", 0.0
 
-        # Clean up: remove quotes, extra whitespace
-        text = re.sub(r'^["\']|["\']$', "", text).strip()
+        pil_img = Image.open(io.BytesIO(buf.tobytes())).convert("RGB")
 
-        # Return with a fixed "Gemini confidence" of 80
-        return text, 80.0
+        prompt = (
+            "Read the student's handwritten answer in this image. "
+            "The handwriting may be messy, faint, or smudged. "
+            "Read only what is visibly written. Do not guess from an answer key. "
+            "Return only the answer text. If it cannot be read reliably, "
+            "return UNREADABLE."
+        )
+
+        qtype = (question_type or "").strip().lower()
+        if qtype in (
+            "numerical", "addition", "subtraction",
+            "multiplication", "division"
+        ):
+            prompt += " This is a numerical answer; preserve the digits exactly."
+        elif qtype in ("true_false",):
+            prompt += " The answer should be True or False if readable."
+        elif qtype in ("shape", "shape_name"):
+            prompt += " Identify the visible drawn shape if possible."
+
+        # client = genai.Client(api_key=api_key)
+        client = genai.Client(
+        api_key=api_key,
+        http_options={"timeout": 15000},
+        )
+        response = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
+            contents=[prompt, pil_img],
+        )
+
+        text = (response.text or "").strip()
+        text = text.strip("\"'").strip()
+
+        if not text or text.upper() in (
+            "UNREADABLE", "UNCLEAR", "CANNOT READ"
+        ):
+            return "", 0.0
+
+        # This is a fallback result, not a calibrated confidence score.
+        return text, 60.0
 
     except Exception as e:
-        print(f"[GEMINI OCR ERROR] {e}")
+        print(f"[GEMINI OCR ERROR] {type(e).__name__}: {e}")
         return "", 0.0
+
+
 
 
 # ── Matching: line detection ──────────────────────────────────────────────────
@@ -343,7 +359,8 @@ def matching_from_lines(gray_image_path, question):
 
     crop = _crop_region(image, rx, ry, rw, rh)
     text, confidence = _run_tesseract(crop, "matching")
-    needs_review = confidence < CONFIDENCE_THRESHOLD or not text.strip()
+    #needs_review = confidence < CONFIDENCE_THRESHOLD or not text.strip()
+    needs_review = confidence < 70 or not text.strip()
     return {
         "recognized_text": text,
         "confidence": confidence,
@@ -354,6 +371,7 @@ def matching_from_lines(gray_image_path, question):
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def ocr_question(gray_image_path, question):
+    print("[DEBUG OCR] Entered ocr_question", flush=True)
     """Full pipeline for one question.
 
     Steps:
@@ -413,18 +431,70 @@ def ocr_question(gray_image_path, question):
             "needs_review": confidence < CONFIDENCE_THRESHOLD or not text.strip(),
         }
 
-    # ── All other question types: Tesseract first ─────────────────────────
-    text, confidence = _run_tesseract(crop, qtype)
+    # ── Choose OCR mode using the expected answer ─────────────────────
+    # Fill-in-the-blank questions can contain either words or numbers.
+    expected_first = str(correct_hint or "").split("|")[0].strip()
+    is_numeric_answer = bool(
+        re.fullmatch(r"-?\d+(?:\.\d+)?", expected_first)
+    )
 
-    # ── Gemini Vision fallback for low confidence or empty OCR ───────────
-    if confidence < _GEMINI_FALLBACK_THRESHOLD or not text.strip():
-        gemini_text, gemini_conf = _gemini_ocr(crop, qtype, correct_hint)
-        if gemini_text and gemini_conf > confidence:
-            text, confidence = gemini_text, gemini_conf
+    tess_qtype = "numerical" if is_numeric_answer else qtype
 
-    needs_review = confidence < CONFIDENCE_THRESHOLD or not text.strip()
+    print(
+        f"[DEBUG OCR] Q type={qtype!r}, "
+        f"expected={expected_first!r}, "
+        f"numeric_mode={is_numeric_answer}",
+        flush=True,
+    )
+
+    text, confidence = _run_tesseract(crop, tess_qtype)
+
+   
+    gemini_text, gemini_conf = "", 0.0
+
+    GEMINI_TRIGGER_CONFIDENCE = 70.0
+    should_use_gemini = (
+        not text.strip()
+        or confidence < GEMINI_TRIGGER_CONFIDENCE
+    )
+   
+    
+    if should_use_gemini:
+        print("[DEBUG OCR] Starting Gemini fallback", flush=True)
+
+        try:
+            gemini_text, gemini_conf = _gemini_ocr(
+            crop, tess_qtype, correct_hint
+            )
+            print(
+                f"[DEBUG OCR] Gemini returned {gemini_text!r}, "
+                f"confidence={gemini_conf}",
+                flush=True,
+            )
+
+            if gemini_text and gemini_conf > 0:
+                text = gemini_text
+                confidence = gemini_conf
+
+        except Exception as e:
+            print(
+                f"[DEBUG OCR] Gemini fallback failed: {e}",
+                flush=True,
+            )
+    # Low-confidence OCR must be reviewed manually.
+    needs_review = (
+        confidence < 70
+        or not text.strip()
+    )
+
     return {
         "recognized_text": text,
         "confidence": confidence,
         "needs_review": needs_review,
     }
+
+    # return {
+    #     "recognized_text": text,
+    #     "confidence": confidence,
+    #     "needs_review": needs_review,
+    # }

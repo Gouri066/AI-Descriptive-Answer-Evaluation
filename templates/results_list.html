@@ -1,0 +1,75 @@
+
+{% extends "base.html" %}
+
+{% block title %}Results | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'results' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>Results <span class="muted">(Phase 9)</span></h2>
+                <p class="muted">
+                    Teacher recommendations, personalized worksheets
+                    and student feedback.
+                </p>
+            </div>
+        </div>
+
+        <div class="panel table-wrap spaced">
+            <h3>Student Learning Reports</h3>
+
+            {% if submissions %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Roll No.</th>
+                        <th>Assessment</th>
+                        <th>Score</th>
+                        <th>Status</th>
+                        <th>Report</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in submissions %}
+                    <tr>
+                        <td><strong>{{ item["student_name"] }}</strong></td>
+                        <td>{{ item["student_roll_no"] }}</td>
+                        <td>{{ item["assessment_title"] }}</td>
+                        <td>
+                            {% if item["total_score"] is not none %}
+                                {{ "%.1f"|format(item["total_score"]) }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge status-{{ item['status'] }}">
+                                {{ item["status"]|replace("_", " ")|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <a class="btn"
+                               href="{{ url_for('evaluate.personalized',
+                                                submission_id=item['id']) }}">
+                                View Report →
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+                <p class="muted">
+                    No evaluated submissions yet. Evaluate an answer sheet
+                    first, and its learning report will appear here.
+                </p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,108 @@
+
+{% extends "base.html" %}
+
+{% block title %}Personalized Learning Report | Answer Evaluation System{% endblock %}
+
+{% block content %}
+<div class="app-layout">
+    {% set active = 'results' %}
+    {% include "_sidebar.html" %}
+
+    <section class="dash-main">
+        <div class="page-head">
+            <div>
+                <h2>Personalized Learning Report</h2>
+                <p class="muted">
+                    {{ submission["student_name"] }}
+                    · Roll {{ submission["student_roll_no"] }}
+                    · {{ submission["assessment_title"] }}
+                </p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('evaluate.result', submission_id=submission['id']) }}"
+                   class="btn btn-outline">← Question-wise Results</a>
+                <button class="btn" onclick="window.print()">Save as PDF</button>
+            </div>
+        </div>
+
+        <div class="panel spaced">
+            <h3>Overall Performance</h3>
+            <div class="score-big">
+                {{ "%.1f"|format(report.total_awarded) }}
+                <span class="score-denom">/ {{ "%g"|format(report.total_maximum) }}</span>
+            </div>
+            <div class="score-bar-wrap">
+                <div class="score-bar"
+                     style="width: {{ report.percentage }}%"></div>
+            </div>
+            <h3>{{ report.percentage }}%</h3>
+            <p class="muted">Total score across evaluated questions</p>
+        </div>
+
+        <div class="report-grid">
+            <div class="panel spaced">
+                <h3>Teacher Recommendations</h3>
+                {% for item in report.recommendations %}
+                    <div class="report-item">
+                        <div class="report-item-heading">
+                            <strong>{{ item.topic }}</strong>
+                            <span class="priority priority-{{ item.priority|lower }}">
+                                {{ item.priority }} priority
+                            </span>
+                        </div>
+                        <p>{{ item.action }}</p>
+                    </div>
+                {% else %}
+                    <p class="muted">No recommendations available yet.</p>
+                {% endfor %}
+            </div>
+
+            <div class="panel spaced">
+                <h3>Topic-wise Performance</h3>
+                {% for item in report.topic_performance %}
+                    <div class="topic-item">
+                        <div class="topic-heading">
+                            <strong>{{ item.topic }}</strong>
+                            <span>{{ item.awarded }}/{{ item.maximum }} · {{ item.percentage }}%</span>
+                        </div>
+                        <div class="score-bar-wrap">
+                            <div class="score-bar"
+                                 style="width: {{ item.percentage }}%"></div>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="muted">No performance data available.</p>
+                {% endfor %}
+            </div>
+
+            <div class="panel spaced report-feedback">
+                <h3>Personalized Student Feedback</h3>
+                <p>{{ report.feedback }}</p>
+            </div>
+
+            <div class="panel spaced">
+                <h3>Practice Worksheet</h3>
+                <p class="muted">Practice these questions to strengthen your understanding.</p>
+
+                {% for item in report.worksheet %}
+                    <div class="worksheet-item">
+                        <span class="worksheet-number">Q{{ item.number }}</span>
+                        <div>
+                            <p>{{ item.question }}</p>
+                            <span class="muted">Topic: {{ item.topic }}</span>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="muted">No practice questions are needed based on this report.</p>
+                {% endfor %}
+
+                {% if report.worksheet %}
+                    <button class="btn" onclick="window.print()">
+                        Print / Save Worksheet as PDF
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

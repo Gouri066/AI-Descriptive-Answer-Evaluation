@@ -85,6 +85,34 @@ def list_submissions():
     return render_template("submissions.html", submissions=rows)
 
 
+@submissions_bp.route("/results")
+@login_required
+def list_results():
+    """List evaluated submissions for Phase 9 learning reports."""
+    rows = get_db().execute(
+        """
+        SELECT
+            s.id,
+            s.student_name,
+            s.student_roll_no,
+            s.status,
+            s.total_score,
+            s.uploaded_at,
+            a.title AS assessment_title,
+            a.class_level,
+            a.subject
+        FROM submissions s
+        JOIN assessments a ON a.id = s.assessment_id
+        WHERE a.teacher_id = ?
+        AND s.status IN ('evaluated', 'needs_review')
+        ORDER BY s.id DESC
+        """,
+        (g.teacher["id"],),
+    ).fetchall()
+
+    return render_template("results_list.html", submissions=rows)
+
+
 @submissions_bp.route("/upload", methods=("GET", "POST"))
 @login_required
 def upload():
