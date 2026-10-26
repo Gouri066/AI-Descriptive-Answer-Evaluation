@@ -32,10 +32,10 @@
                 {% for b in boxes %}
                     <tr>
                         <td>{{ b["question_no"] }}</td>
-                        <td><input type="number" name="box_{{ b["question_no"] }}_x" value="{{ b["region_x"] }}" required></td>
-                        <td><input type="number" name="box_{{ b["question_no"] }}_y" value="{{ b["region_y"] }}" required></td>
-                        <td><input type="number" name="box_{{ b["question_no"] }}_w" value="{{ b["region_w"] }}" required></td>
-                        <td><input type="number" name="box_{{ b["question_no"] }}_h" value="{{ b["region_h"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_x" value="{{ b["x"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_y" value="{{ b["y"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_w" value="{{ b["w"] }}" required></td>
+                        <td><input type="number" name="box_{{ b["question_no"] }}_h" value="{{ b["h"] }}" required></td>
                     </tr>
                 {% endfor %}
                 </tbody>

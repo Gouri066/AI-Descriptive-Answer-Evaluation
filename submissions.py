@@ -150,50 +150,14 @@ def upload():
                     image, upload_path(binary_name), upload_path(gray_name)
                 )
                 # ----------------------------------------------------------
-                # Automatic answer‑box detection using the gray image
+                # Auto-detection removed: teacher must draw boxes manually
+                # via the layout editor (Define Answer Boxes button).
                 # ----------------------------------------------------------
-                try:
-                    from modules.box_detection import detect_answer_boxes
-                    gray_path = upload_path(gray_name)
-                    boxes = detect_answer_boxes(gray_path)
-                    # Count of questions in this assessment
-                    qcount = db.execute(
-                        "SELECT COUNT(*) as cnt FROM questions WHERE assessment_id = ?",
-                        (assessment_id,)
-                    ).fetchone()["cnt"]
-                    if len(boxes) < qcount:
-                        flash(
-                            f"Detected only {len(boxes)} answer boxes but this assessment expects {qcount}. Please verify the sheet.",
-                            "warning",
-                        )
-                    else:
-                        # If more boxes than needed, keep the largest by area
-                        if len(boxes) > qcount:
-                            boxes.sort(key=lambda b: b["w"] * b["h"], reverse=True)
-                            boxes = boxes[:qcount]
-                        # Sort remaining boxes top‑to‑bottom then left‑to‑right
-                        # Load gray image to get dimensions for normalization
-                        import cv2
-                        img = cv2.imread(gray_path)
-                        if img is None:
-                            raise RuntimeError("Failed to load gray image for box normalization")
-                        h_img, w_img = img.shape[:2]
-                        # Store normalized coordinates (fractions of image size)
-                        for idx, b in enumerate(boxes, start=1):
-                            nx = b["x"] / w_img
-                            ny = b["y"] / h_img
-                            nw = b["w"] / w_img
-                            nh = b["h"] / h_img
-                            db.execute(
-                                "UPDATE questions SET region_x = ?, region_y = ?, region_w = ?, region_h = ? "
-                                "WHERE assessment_id = ? AND question_no = ?",
-                                (nx, ny, nw, nh, assessment_id, idx),
-                            )
-                        db.commit()
-                        flash(f"Detected {len(boxes)} answer boxes and saved them.", "success")
-                except Exception as det_e:
-                    print("[BOX DETECTION ERROR]", det_e)
-                    flash("Could not automatically detect answer boxes – you may define them manually.", "error")
+                flash(
+                    "Sheet uploaded. Now go to 'Define Answer Boxes' to mark where "
+                    "each student writes their answer, then evaluate.",
+                    "info",
+                )
             except ValueError as problem:
                 remove_submission_files(filename)
                 error = str(problem)
@@ -285,30 +249,72 @@ def preview_boxes(submission_id):
 
 @submissions_bp.route("/<int:submission_id>/review_boxes", methods=("GET", "POST"))
 @login_required
+
 def review_boxes(submission_id):
+    """Edit answer‑box coordinates.
+    Stored values are fractions (0‑1). Convert to pixel values for UI,
+    and back to fractions on POST.
+    """
     submission = get_owned_submission(submission_id)
     db = get_db()
-    # Fetch current box coordinates for this assessment
-    boxes = db.execute(
+
+    # Load gray image to get dimensions for conversion
+    processed_name = submission["processed_image_path"]
+    if not processed_name:
+        flash("Processed image not found.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    gray_name = processed_name.replace("_binary.png", "_gray.png")
+    gray_path = upload_path(gray_name)
+    if not os.path.exists(gray_path):
+        flash("Gray image not found. Re‑run preprocessing.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    import cv2
+    img = cv2.imread(gray_path)
+    if img is None:
+        flash("Unable to load gray image.", "error")
+        return redirect(url_for("submissions.detail", submission_id=submission_id))
+    h, w = img.shape[:2]
+
+    # Fetch stored fractional coordinates
+    stored_boxes = db.execute(
         "SELECT question_no, region_x, region_y, region_w, region_h FROM questions WHERE assessment_id = ? ORDER BY question_no",
         (submission["assessment_id"],)
     ).fetchall()
+
+    # Convert fractions to pixel values for the template
+    display_boxes = []
+    for b in stored_boxes:
+        display_boxes.append({
+            "question_no": b["question_no"],
+            "x": int((b["region_x"] or 0) * w),
+            "y": int((b["region_y"] or 0) * h),
+            "w": int((b["region_w"] or 0) * w),
+            "h": int((b["region_h"] or 0) * h),
+        })
+
     if request.method == "POST":
-        for b in boxes:
+        # Update DB with normalized fractions from pixel inputs
+        for b in display_boxes:
             qno = b["question_no"]
             x = request.form.get(f"box_{qno}_x", type=int)
             y = request.form.get(f"box_{qno}_y", type=int)
-            w = request.form.get(f"box_{qno}_w", type=int)
-            h = request.form.get(f"box_{qno}_h", type=int)
-            if None not in (x, y, w, h):
+            w_px = request.form.get(f"box_{qno}_w", type=int)
+            h_px = request.form.get(f"box_{qno}_h", type=int)
+            if None not in (x, y, w_px, h_px) and w > 0 and h > 0:
+                nx = x / w
+                ny = y / h
+                nw = w_px / w
+                nh = h_px / h
                 db.execute(
                     "UPDATE questions SET region_x = ?, region_y = ?, region_w = ?, region_h = ? WHERE assessment_id = ? AND question_no = ?",
-                    (x, y, w, h, submission["assessment_id"], qno),
+                    (nx, ny, nw, nh, submission["assessment_id"], qno),
                 )
         db.commit()
         flash("Box coordinates updated.", "success")
         return redirect(url_for("submissions.detail", submission_id=submission_id))
-    return render_template("box_review.html", submission=submission, boxes=boxes)
+
+    # GET – render template with pixel values
+    return render_template("box_review.html", submission=submission, boxes=display_boxes)
 
 
 

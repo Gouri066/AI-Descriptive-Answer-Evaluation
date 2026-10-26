@@ -15,11 +15,69 @@ def _norm(text):
     return re.sub(r"\s+", " ", text)
 
 
+def _letters_only(text):
+    """Strip everything except letters and digits."""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _edit_distance(a, b):
+    """Levenshtein distance between two strings."""
+    if not a: return len(b)
+    if not b: return len(a)
+    dp = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        prev, dp[0] = dp[0], i
+        for j, cb in enumerate(b, 1):
+            prev, dp[j] = dp[j], min(dp[j]+1, dp[j-1]+1, prev+(ca != cb))
+    return dp[len(b)]
+
+
+def _fuzzy_match(recognized, accepted_list, threshold=0.75):
+    """True if recognized is similar enough to any accepted answer.
+    Handles OCR errors: 0/O, 1/l, 5/S, smudged letters, extra characters.
+    Also fixes digit/letter OCR confusion for numeric fill-blank answers.
+    """
+    # Letter→digit fixes (for when answer is a number, OCR reads letters)
+    _DIGIT_FIXES = str.maketrans({
+        "O": "0", "o": "0", "l": "1", "I": "1", "|": "1",
+        "Z": "2", "z": "2", "S": "5", "s": "5",
+        "B": "8", "b": "8", "G": "6", "g": "6",
+    })
+    # Letter normalisation (for when answer is text, OCR reads similar letters)
+    _LETTER_FIXES = str.maketrans({"0": "o", "1": "l", "5": "s", "8": "b", "|": "i"})
+
+    rec_clean = _letters_only(recognized)
+    # Generate multiple "views" of the recognized text
+    rec_digit_fixed = recognized.translate(_DIGIT_FIXES)
+    rec_digit_clean = _letters_only(re.sub(r"[^\d]", "", rec_digit_fixed))
+    rec_letter_fixed = rec_clean.translate(_LETTER_FIXES)
+
+    for acc in accepted_list:
+        acc_clean = _letters_only(acc)
+        if not acc_clean:
+            continue
+        # For numeric accepted answers, also try digit-corrected version
+        acc_digits = re.sub(r"[^\d.]", "", acc)
+
+        # Substring match
+        if acc_clean in rec_clean or rec_clean in acc_clean:
+            return True
+        if acc_digits and acc_digits in re.sub(r"[^\d.]", "", rec_digit_fixed):
+            return True
+
+        # Fuzzy similarity across all variants
+        for r in (rec_clean, rec_letter_fixed, rec_digit_clean):
+            max_len = max(len(r), len(acc_clean), 1)
+            if (1.0 - _edit_distance(r, acc_clean) / max_len) >= threshold:
+                return True
+    return False
+
+
 # ── Shape aliases ─────────────────────────────────────────────────────────────
 # When a student draws a circle, OCR often reads it as "O" or "0".
 # This maps each shape name → set of OCR outputs we treat as correct.
 _SHAPE_ALIASES = {
-    "circle":    {"circle", "o", "0", "oval", "round"},
+    "circle":    {"circle", "o", "0", "oval", "round", "s", "c"},
     "square":    {"square", "sq"},
     "triangle":  {"triangle", "tri"},
     "rectangle": {"rectangle", "rect"},
@@ -30,15 +88,25 @@ _SHAPE_ALIASES = {
 }
 
 
+
 # ── Per-type scorers ─────────────────────────────────────────────────────────
 
 def _score_fill_blank(recognized, correct, max_marks):
     """Accepted answers in 'correct' are separated by |  e.g.  colour|color"""
     rec_norm = _norm(recognized)
-    accepted = [_norm(a) for a in correct.split("|") if a.strip()]
-    primary = correct.split("|")[0].strip()
+    accepted_raw = [a.strip() for a in correct.split("|") if a.strip()]
+    accepted = [_norm(a) for a in accepted_raw]
+    primary = accepted_raw[0] if accepted_raw else correct.strip()
 
-    is_correct = bool(rec_norm) and (rec_norm in accepted)
+    # 1. Exact normalized match
+    is_correct = bool(rec_norm) and rec_norm in accepted
+    # 2. Substring match (OCR sometimes reads extra surrounding text)
+    if not is_correct and rec_norm:
+        is_correct = any(a and a in rec_norm for a in accepted)
+    # 3. Fuzzy match: tolerates smudged / bad handwriting OCR errors
+    if not is_correct and rec_norm:
+        is_correct = _fuzzy_match(recognized, accepted_raw, threshold=0.75)
+
     return {
         "is_correct": is_correct,
         "marks_awarded": float(max_marks) if is_correct else 0.0,
@@ -54,8 +122,22 @@ def _score_fill_blank(recognized, correct, max_marks):
 
 
 def _score_numerical(recognized, correct, max_marks):
-    """Extract the first number from recognized text and compare to correct."""
-    digits = re.sub(r"[^\d.\-]", "", recognized)
+    """Extract a number from OCR text and compare to correct answer.
+    Handles common OCR confusions: O→0, l/I→1, S/Z→2/5, B→8, etc.
+    """
+    # Fix common OCR digit misreadings before extracting number
+    _DIGIT_FIXES = str.maketrans({
+        "O": "0", "o": "0",  # letter O → zero
+        "l": "1", "I": "1", "|": "1",  # lowercase L / I / pipe → 1
+        "Z": "2", "z": "2",  # Z → 2 (common in child handwriting)
+        "S": "5", "s": "5",  # S → 5
+        "B": "8", "b": "8",  # B → 8
+        "G": "6", "g": "6",  # G → 6
+        "T": "7",            # T → 7
+    })
+    fixed = recognized.translate(_DIGIT_FIXES)
+    # Extract digits (and decimal point / minus)
+    digits = re.sub(r"[^\d.\-]", "", fixed)
     try:
         rec_val = float(digits)
         cor_val = float(correct)
@@ -77,6 +159,7 @@ def _score_numerical(recognized, correct, max_marks):
             )
         ),
     }
+
 
 
 def _score_shape(recognized, correct, max_marks):
@@ -235,7 +318,8 @@ def score_answer(question_type, recognized_text, correct_answer, max_marks):
         "table_fill": _score_exact,
         "shape_name": _score_shape,
     }
-    fn = scorers.get(question_type, _score_fill_blank)
+    qtype_norm = (question_type or "").strip().lower().replace(" ", "_")
+    fn = scorers.get(qtype_norm, _score_fill_blank)
     result = fn(rec, correct_answer, max_marks)
 
     result.setdefault("is_correct", False)
