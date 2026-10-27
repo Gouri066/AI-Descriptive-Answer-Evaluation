@@ -24,8 +24,6 @@
                       class="inline-form">
                     <button type="submit" class="btn">▶ Evaluate</button>
                 </form>
-                <!-- New button to edit/draw answer boxes -->
-                <a href="{{ url_for('submissions.review_boxes', submission_id=submission['id']) }}" class="btn btn-outline" style="margin-left:8px;">Edit Boxes</a>
                 <form method="post"
                       action="{{ url_for('submissions.reprocess', submission_id=submission['id']) }}"
                       class="inline-form" style="margin-left:8px;">

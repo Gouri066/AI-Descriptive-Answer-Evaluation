@@ -162,7 +162,8 @@ def run(submission_id):
 
     print("[DEBUG] All questions processed; updating submission")
 
-    new_status = "needs_review" if any_needs_review else "evaluated"
+    #new_status = "needs_review" if any_needs_review else "evaluated"
+    new_status = "evaluated"
     fb = scoring.overall_feedback(
         total_awarded, total_possible, wrong_q_labels
     )

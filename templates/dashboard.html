@@ -8,33 +8,58 @@
     {% include "_sidebar.html" %}
 
     <section class="dash-main">
-        <h2>Welcome, {{ g.teacher["full_name"] }}</h2>
-        <p class="muted">Here is a summary of your assessments and evaluated answer sheets.</p>
+
+        <div class="dashboard-welcome">
+            <div>
+                <span class="dashboard-eyebrow">TEACHER WORKSPACE</span>
+                <h2>Welcome, {{ g.teacher["full_name"] }}!</h2>
+                <p class="muted">
+                    Here's your overview of assessments and student answer sheets.
+                </p>
+            </div>
+        </div>
 
         <div class="stat-grid">
+
             <div class="stat-card">
                 <div class="stat-number">{{ stats.assessments }}</div>
-                <div class="stat-label">Assessments</div>
+                <div class="stat-label">Total Assessments</div>
             </div>
+
             <div class="stat-card">
                 <div class="stat-number">{{ stats.submissions }}</div>
-                <div class="stat-label">Answer sheets uploaded</div>
+                <div class="stat-label">Answer Sheets Uploaded</div>
             </div>
+
             <div class="stat-card">
                 <div class="stat-number">{{ stats.evaluated }}</div>
                 <div class="stat-label">Evaluated</div>
             </div>
+
             <div class="stat-card">
                 <div class="stat-number">{{ stats.needs_review }}</div>
-                <div class="stat-label">Need your review</div>
+                <div class="stat-label">Need Your Review</div>
             </div>
+
         </div>
 
-        <div class="panel">
-            <h3>Get started</h3>
-            <p class="muted">Create an assessment and add its questions and answer key.</p>
-            <p><a href="{{ url_for('assessments.new_assessment') }}" class="btn spaced-btn">+ New Assessment</a></p>
+        <div class="panel dashboard-start-card">
+            <div class="dashboard-start-icon">+</div>
+
+            <div class="dashboard-start-content">
+                <h3>Get started</h3>
+                <p class="muted">
+                    Create a new assessment, add questions and set the answer key
+                    to begin evaluating student answer sheets.
+                </p>
+            </div>
+
+            <a href="{{ url_for('assessments.new_assessment') }}"
+               class="btn dashboard-create-btn">
+                + New Assessment
+            </a>
         </div>
+
     </section>
 </div>
 {% endblock %}

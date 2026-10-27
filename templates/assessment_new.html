@@ -11,6 +11,9 @@
 
         <label for="class_level">Class</label>
         <select id="class_level" name="class_level" required>
+            <option value="Nursery">Nursery</option>
+            <option value="LKG">LKG</option>
+            <option value="UKG">UKG</option>
             {% for c in range(1, 6) %}
             <option value="{{ c }}">Class {{ c }}</option>
             {% endfor %}

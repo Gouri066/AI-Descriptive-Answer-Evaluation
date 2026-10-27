@@ -11,7 +11,7 @@
     <section class="dash-main">
         <div class="page-head">
             <div>
-                <h2>Results <span class="muted">(Phase 9)</span></h2>
+                <h2>Results</h2>
                 <p class="muted">
                     Teacher recommendations, personalized worksheets
                     and student feedback.
@@ -53,9 +53,9 @@
                             </span>
                         </td>
                         <td>
-                            <a class="btn"
-                               href="{{ url_for('evaluate.personalized',
-                                                submission_id=item['id']) }}">
+                            <a class="btn btn-outline report-button"
+                                href="{{ url_for('evaluate.personalized',
+                                submission_id=item['id']) }}">
                                 View Report →
                             </a>
                         </td>
